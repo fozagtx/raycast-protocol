@@ -24,6 +24,10 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: "Raycast Protocol",
   description: "Raycast Protocol - cross-chain vaults",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 }
 
 export default function RootLayout({

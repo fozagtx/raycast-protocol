@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Raycast Protocol">
+  <defs>
+    <linearGradient id="raycast-bg" x1="96" y1="52" x2="416" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00318f" />
+      <stop offset="0.45" stop-color="#0074ec" />
+      <stop offset="1" stop-color="#74c7ff" />
+    </linearGradient>
+    <linearGradient id="raycast-ring" x1="118" y1="362" x2="430" y2="154" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.88" />
+      <stop offset="1" stop-color="#d7e7fe" stop-opacity="0.16" />
+    </linearGradient>
+    <filter id="raycast-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#002259" flood-opacity="0.28" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#raycast-bg)" />
+  <path
+    d="M111 340C164 228 280 136 407 104"
+    fill="none"
+    stroke="url(#raycast-ring)"
+    stroke-width="32"
+    stroke-linecap="round"
+  />
+  <circle cx="396" cy="111" r="24" fill="#ffffff" opacity="0.96" />
+  <circle cx="396" cy="111" r="48" fill="#ffffff" opacity="0.12" />
+  <text
+    x="256"
+    y="335"
+    fill="#ffffff"
+    filter="url(#raycast-shadow)"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="254"
+    font-weight="700"
+    letter-spacing="0"
+    text-anchor="middle"
+  >
+    R
+  </text>
+</svg>
