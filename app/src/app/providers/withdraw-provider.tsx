@@ -8,19 +8,16 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import {
-  Address,
   BaseError,
   encodeFunctionData,
   decodeFunctionResult,
   formatUnits,
-  parseAbi,
   parseUnits,
 } from "viem"
 import {
   useAccount,
   useChainId,
   usePublicClient,
-  useReadContract,
   useSwitchChain,
   useWalletClient,
 } from "wagmi"
@@ -37,8 +34,6 @@ interface FormattedQuote {
 export interface WithdrawContext {
   inputAmount: string
   inputAmountUsd: string
-  isApproved: boolean
-  isApproving: boolean
   isLoading: boolean
   isSubmitting: boolean
   isWithdrawConfirmed: boolean
@@ -47,7 +42,6 @@ export interface WithdrawContext {
   transactionHash: string | null
   transactionExplorerUrl: string
   quote: FormattedQuote | null
-  onApprove: () => void
   onChangeInput: (val: string) => void
   onSubmit: () => void
 }
@@ -55,8 +49,6 @@ export interface WithdrawContext {
 export const WithdrawProviderContext = createContext<WithdrawContext>({
   inputAmount: "0",
   inputAmountUsd: "$0",
-  isApproved: false,
-  isApproving: false,
   isLoading: false,
   isSubmitting: false,
   isWithdrawConfirmed: false,
@@ -65,15 +57,12 @@ export const WithdrawProviderContext = createContext<WithdrawContext>({
   transactionHash: null,
   transactionExplorerUrl: "",
   quote: null,
-  onApprove: () => {},
   onChangeInput: () => {},
   onSubmit: () => {},
 })
 
 export const useWithdraw = () => useContext(WithdrawProviderContext)
 
-const vaultShareToken = sourceVaultContract
-const spender = sourceVaultContract
 const targetChain = arbitrumSepolia
 const transactionExplorerUrl = targetChain.blockExplorers.default.url
 const maxFeeBuffer = BigInt(100_000_000)
@@ -111,7 +100,6 @@ export function WithdrawProvider(props: { children: ReactNode }) {
 
   const [inputAmount, setInputAmount] = useState("0")
   const inputAmountUsd = useMemo(() => `$${Number(inputAmount)}`, [inputAmount])
-  const [isApproving, setIsApproving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWithdrawConfirmed, setIsWithdrawConfirmed] = useState(false)
@@ -120,37 +108,9 @@ export function WithdrawProvider(props: { children: ReactNode }) {
   const [transactionHash, setTransactionHash] = useState<string | null>(null)
   const [quote, setQuote] = useState<FormattedQuote | null>(null)
 
-  const { data: allowance, refetch } = useReadContract({
-    chainId: targetChain.id,
-    address: vaultShareToken,
-    abi: parseAbi([
-      "function allowance(address owner, address spender) external view returns (uint256)",
-    ]),
-    functionName: "allowance",
-    args: [address as Address, spender],
-    query: {
-      enabled: Boolean(address),
-    },
-  })
-
-  const isApproved = useMemo(() => {
-    if (!address) return false
-    if (isApproving) return false
-    const amnt = Number(inputAmount)
-    if (amnt <= 0) return false
-    let amount: bigint
-    try {
-      amount = parseUnits(inputAmount, 6)
-    } catch {
-      return false
-    }
-    return allowance ? allowance >= amount : false
-  }, [address, allowance, inputAmount, isApproving])
-
   const validateReady = useCallback(async () => {
     setErrorMessage(null)
     setStatusMessage(null)
-    setTransactionHash(null)
 
     if (!address) {
       setErrorMessage("Connect your wallet first.")
@@ -161,7 +121,9 @@ export function WithdrawProvider(props: { children: ReactNode }) {
       return false
     }
     if (!walletClient) {
-      setErrorMessage("Wallet signer is not available. Reconnect your wallet and try again.")
+      setErrorMessage(
+        "Wallet signer is not available. Reconnect your wallet and try again.",
+      )
       return false
     }
     const amnt = Number(inputAmount)
@@ -197,49 +159,6 @@ export function WithdrawProvider(props: { children: ReactNode }) {
     switchChainAsync,
     walletClient,
   ])
-
-  const onApprove = useCallback(() => {
-    const approve = async () => {
-      if (!(await validateReady())) return
-      const account = address
-      const client = publicClient
-      const wallet = walletClient
-      if (!account || !client || !wallet) return
-      setIsApproving(true)
-      setIsWithdrawConfirmed(false)
-      try {
-        const abi = parseAbi([
-          "function approve(address spender, uint256 amount) external returns (bool)",
-        ])
-        const amount = parseUnits(inputAmount, 6)
-        const feeOverrides = await getBufferedFeeOverrides(client)
-        const hash = await wallet.writeContract({
-          account,
-          address: vaultShareToken,
-          abi,
-          chain: targetChain,
-          functionName: "approve",
-          args: [spender, amount],
-          ...feeOverrides,
-        })
-        setTransactionHash(hash)
-        setStatusMessage(`Approval submitted: ${shortHash(hash)}`)
-        await client.waitForTransactionReceipt({
-          confirmations: 1,
-          hash,
-        })
-        await refetch()
-        setStatusMessage("Approval confirmed.")
-      } catch (error) {
-        setErrorMessage(formatError(error, "Approval failed."))
-        setStatusMessage(null)
-        setTransactionHash(null)
-      } finally {
-        setIsApproving(false)
-      }
-    }
-    approve()
-  }, [address, inputAmount, publicClient, refetch, validateReady, walletClient])
 
   const onChangeInput = (val: string) => {
     setInputAmount(val)
@@ -288,19 +207,17 @@ export function WithdrawProvider(props: { children: ReactNode }) {
           confirmations: 1,
           hash,
         })
-        await refetch()
         setIsWithdrawConfirmed(true)
         setStatusMessage("Withdrawal confirmed.")
       } catch (error) {
         setErrorMessage(formatError(error, "Withdrawal failed."))
         setStatusMessage(null)
-        setTransactionHash(null)
       } finally {
         setIsSubmitting(false)
       }
     }
     submitting()
-  }, [address, inputAmount, publicClient, refetch, validateReady, walletClient])
+  }, [address, inputAmount, publicClient, validateReady, walletClient])
 
 
   useEffect(() => {
@@ -352,15 +269,15 @@ export function WithdrawProvider(props: { children: ReactNode }) {
     }
   }, [address, inputAmount, publicClient])
 
-  const canDisplayQuote = Boolean(address && publicClient && Number(inputAmount) > 0)
+  const canDisplayQuote = Boolean(
+    address && publicClient && Number(inputAmount) > 0,
+  )
 
   return (
     <WithdrawProviderContext.Provider
       value={{
         inputAmount,
         inputAmountUsd,
-        isApproved,
-        isApproving,
         isLoading: canDisplayQuote ? isLoading : false,
         isSubmitting,
         isWithdrawConfirmed,
@@ -369,7 +286,6 @@ export function WithdrawProvider(props: { children: ReactNode }) {
         transactionHash,
         transactionExplorerUrl,
         quote: canDisplayQuote ? quote : null,
-        onApprove,
         onChangeInput,
         onSubmit,
       }}

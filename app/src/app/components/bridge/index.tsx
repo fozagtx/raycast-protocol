@@ -12,8 +12,27 @@ import { useWithdraw } from "@/app/providers/withdraw-provider"
 
 export function Bridge() {
   const [showDeposit, setShowDeposit] = useState(true)
+  const [dismissedDepositReceipt, setDismissedDepositReceipt] = useState<
+    string | null
+  >(null)
+  const [dismissedWithdrawReceipt, setDismissedWithdrawReceipt] = useState<
+    string | null
+  >(null)
   const bridge = useBridge()
   const withdraw = useWithdraw()
+
+  const depositReceiptKey =
+    bridge.transactionHash ?? (bridge.isDepositConfirmed ? "deposit" : null)
+  const withdrawReceiptKey =
+    withdraw.transactionHash ??
+    (withdraw.isWithdrawConfirmed ? "withdraw" : null)
+  const showDepositReceipt =
+    bridge.isSubmitting ||
+    (bridge.isDepositConfirmed && dismissedDepositReceipt !== depositReceiptKey)
+  const showWithdrawReceipt =
+    withdraw.isSubmitting ||
+    (withdraw.isWithdrawConfirmed &&
+      dismissedWithdrawReceipt !== withdrawReceiptKey)
 
   const bridgeTourSteps = useMemo<DriveStep[]>(
     () => [
@@ -105,7 +124,7 @@ export function Bridge() {
         popover: {
           title: "Withdraw",
           description:
-            "Confirm in your wallet, then the same receipt panel shows the explorer link and copyable hash.",
+            "Withdraw has no approval step for your own rcARB. Confirm in your wallet, then the receipt panel shows the explorer link and copyable hash.",
           side: "left",
           align: "center",
         },
@@ -118,11 +137,17 @@ export function Bridge() {
     setShowDeposit(showDeposit)
   }
 
-  if (bridge.isSubmitting) {
+  if (showDepositReceipt && (showDeposit || !showWithdrawReceipt)) {
     return (
       <Submitting
+        actionLabel="Deposit"
         explorerUrl={bridge.transactionExplorerUrl}
-        routeLabel="Arbitrum Sepolia to Ethereum Sepolia"
+        isComplete={bridge.isDepositConfirmed && !bridge.isSubmitting}
+        onDone={() => {
+          setDismissedDepositReceipt(depositReceiptKey)
+          setShowDeposit(true)
+        }}
+        routeLabel="Arbitrum Sepolia vault"
         statusLabel={bridge.statusMessage ?? "Confirming deposit..."}
         transactionHash={bridge.transactionHash}
         inputLabel={`${bridge.inputAmount} USDC`}
@@ -131,10 +156,17 @@ export function Bridge() {
     )
   }
 
-  return withdraw.isSubmitting ? (
+  return showWithdrawReceipt ? (
     <Submitting
+      actionLabel="Withdraw"
       explorerUrl={withdraw.transactionExplorerUrl}
-      routeLabel="Ethereum Sepolia to Arbitrum Sepolia"
+      helperText="No approve transaction is needed when you redeem your own rcARB."
+      isComplete={withdraw.isWithdrawConfirmed && !withdraw.isSubmitting}
+      onDone={() => {
+        setDismissedWithdrawReceipt(withdrawReceiptKey)
+        setShowDeposit(false)
+      }}
+      routeLabel="Arbitrum Sepolia vault"
       statusLabel={withdraw.statusMessage ?? "Confirming withdrawal..."}
       transactionHash={withdraw.transactionHash}
       inputLabel={`${withdraw.inputAmount} rcARB`}

@@ -27,9 +27,11 @@ export function Input(props: InputProps) {
             className="w-full rounded-lg bg-transparent px-1 text-4xl font-semibold tracking-[-0.5px] text-[#FBFBFD] outline-none transition duration-150 ease-out placeholder:text-[#676B7E] focus-visible:ring-2 focus-visible:ring-blue-500/80 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             placeholder="0"
             onChange={(e) => props.onChange(e.target.value)}
-            type="number"
+            type="text"
             inputMode="decimal"
-            min="0"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="deposit-amount-usd"
             value={props.value}
           />
         </div>
@@ -44,11 +46,14 @@ export function Input(props: InputProps) {
         </div>
       </div>
       <div className="flex flex-row items-end justify-between">
-        <div className="text-sm tracking-[-0.5px] text-[#A7ABBE]">
+        <div
+          id="deposit-amount-usd"
+          className="text-sm tracking-[-0.5px] text-[#A7ABBE]"
+        >
           {props.amountUsd}
         </div>
         {isLoading && (
-          <div className="h-3 w-3">
+          <div className="h-3 w-3" aria-label="Updating deposit quote">
             <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-blue-500 opacity-75"></span>
           </div>
         )}

@@ -18,12 +18,14 @@ export function Input(props: InputProps) {
         htmlFor="withdraw-amount"
         className="text-sm font-medium tracking-[-0.5px] text-[#8A8FA8]"
       >
-        Pay
+        Pay rcARB
       </label>
       <div className="flex flex-row items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <input
             id="withdraw-amount"
+            aria-label="Withdraw amount in rcARB"
+            autoComplete="off"
             className="w-full rounded-lg bg-transparent px-1 text-4xl font-semibold tracking-[-0.5px] text-[#FBFBFD] outline-none transition duration-150 ease-out placeholder:text-[#676B7E] focus-visible:ring-2 focus-visible:ring-blue-500/80 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             placeholder="0"
             onChange={(e) => props.onChange(e.target.value)}

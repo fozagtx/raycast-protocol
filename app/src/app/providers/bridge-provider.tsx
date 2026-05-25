@@ -150,7 +150,6 @@ export function BridgeProvider(props: { children: ReactNode }) {
   const validateReady = useCallback(async () => {
     setErrorMessage(null)
     setStatusMessage(null)
-    setTransactionHash(null)
 
     if (!address) {
       setErrorMessage("Connect your wallet first.")
@@ -161,7 +160,9 @@ export function BridgeProvider(props: { children: ReactNode }) {
       return false
     }
     if (!walletClient) {
-      setErrorMessage("Wallet signer is not available. Reconnect your wallet and try again.")
+      setErrorMessage(
+        "Wallet signer is not available. Reconnect your wallet and try again.",
+      )
       return false
     }
     const amnt = Number(inputAmount)
@@ -238,7 +239,6 @@ export function BridgeProvider(props: { children: ReactNode }) {
       } catch (error) {
         setErrorMessage(formatError(error, "Approval failed."))
         setStatusMessage(null)
-        setTransactionHash(null)
       } finally {
         setIsApproving(false)
       }
@@ -311,7 +311,6 @@ export function BridgeProvider(props: { children: ReactNode }) {
       } catch (error) {
         setErrorMessage(formatError(error, "Deposit failed."))
         setStatusMessage(null)
-        setTransactionHash(null)
       } finally {
         setIsSubmitting(false)
       }
