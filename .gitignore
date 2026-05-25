@@ -1,0 +1,6 @@
+# Mac OS files
+.DS_Store
+
+# local agent/browser state
+.playwright-mcp/
+.serena/
