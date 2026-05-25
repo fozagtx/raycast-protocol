@@ -1,38 +1,12 @@
 "use client"
 
+import { ConnectKitButton } from "connectkit"
 import Image from "next/image"
-import { useAccount, useConnect, useDisconnect } from "wagmi"
 
 const formatAddress = (address: string) =>
   `${address.slice(0, 6)}...${address.slice(-4)}`
 
-const getConnectorLabel = (connector: { id: string; name: string }) => {
-  if (connector.id === "familyAccountsProvider") return "Family"
-  if (connector.id === "injected") return "Browser wallet"
-  if (connector.id === "walletConnect") return "WalletConnect"
-
-  return connector.name
-}
-
-const getConnectorHint = (connector: { id: string }) => {
-  if (connector.id === "familyAccountsProvider") return "Smart account"
-  if (connector.id === "injected") return "MetaMask, Rabby, Coinbase"
-  if (connector.id === "walletConnect") return "Mobile wallets"
-
-  return "Wallet"
-}
-
 export function ConnectButton() {
-  const { address, isConnected } = useAccount()
-  const { connect, connectors, isPending } = useConnect()
-  const { disconnect } = useDisconnect()
-
-  const connectedLabel = isConnected
-    ? address
-      ? `Connected ${formatAddress(address)}`
-      : "Connected"
-    : "Connect wallet"
-
   return (
     <section className="w-[min(400px,calc(100vw-32px))] rounded-[30px] border border-white/10 bg-[#17191C] p-3 text-left text-[#FBFBFD] shadow-[0_2px_4px_0_rgba(0,0,0,0.2),0_18px_50px_-12px_rgba(0,34,89,0.42)]">
       <div className="mb-2 flex items-center justify-between px-1">
@@ -103,43 +77,26 @@ export function ConnectButton() {
         </div>
       </div>
 
-      {isConnected ? (
-        <button
-          type="button"
-          onClick={() => disconnect()}
-          className="mt-2 flex h-12 w-full items-center justify-center rounded-full bg-cta-gradient px-6 text-base font-semibold tracking-[-0.5px] text-white transition duration-150 ease-out hover:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#17191C]"
-        >
-          {connectedLabel}
-        </button>
-      ) : (
-        <div className="mt-3 space-y-2">
-          <div className="px-1 text-xs font-semibold tracking-[-0.5px] text-[#A7ABBE]">
-            Connect wallet
-          </div>
-          {connectors.map((connector) => (
-            <button
-              key={`${connector.id}-${connector.name}`}
-              type="button"
-              onClick={() => connect({ connector })}
-              disabled={isPending}
-              aria-busy={isPending}
-              className="flex h-14 w-full items-center justify-between rounded-[18px] border border-white/10 bg-cta-gradient px-4 text-left text-white transition duration-150 ease-out hover:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#17191C] disabled:pointer-events-none disabled:opacity-75"
-            >
-              <span className="text-base font-semibold tracking-[-0.5px]">
-                {isPending ? "Connecting..." : getConnectorLabel(connector)}
-              </span>
-              <span className="text-xs font-semibold tracking-[-0.5px] text-white/75">
-                {getConnectorHint(connector)}
-              </span>
-            </button>
-          ))}
-          {connectors.length === 0 && (
-            <div className="rounded-[18px] border border-white/10 bg-[#292C32] px-4 py-3 text-sm font-semibold tracking-[-0.5px] text-[#D1D6E0]">
-              No wallet connectors available.
-            </div>
-          )}
-        </div>
-      )}
+      <ConnectKitButton.Custom>
+        {({ isConnected, isConnecting, show, address }) => (
+          <button
+            type="button"
+            onClick={show}
+            disabled={isConnecting}
+            aria-busy={isConnecting}
+            aria-label="Connect wallet"
+            className="mt-2 flex h-12 w-full items-center justify-center rounded-full bg-cta-gradient px-6 text-base font-semibold tracking-[-0.5px] text-white transition duration-150 ease-out hover:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#17191C] disabled:pointer-events-none disabled:opacity-75"
+          >
+            {isConnected
+              ? address
+                ? `Connected ${formatAddress(address)}`
+                : "Connected"
+              : isConnecting
+                ? "Connecting..."
+                : "Connect wallet"}
+          </button>
+        )}
+      </ConnectKitButton.Custom>
     </section>
   )
 }

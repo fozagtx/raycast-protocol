@@ -1,6 +1,7 @@
 "use client"
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { ConnectKitProvider } from "connectkit"
 import { familyAccountsConnector } from "family"
 import type { ReactNode } from "react"
 import { WagmiProvider, createConfig, http } from "wagmi"
@@ -61,9 +62,11 @@ export function WalletProviders({ children }: WalletProvidersProps) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <BridgeProvider>
-          <WithdrawProvider>{children}</WithdrawProvider>
-        </BridgeProvider>
+        <ConnectKitProvider>
+          <BridgeProvider>
+            <WithdrawProvider>{children}</WithdrawProvider>
+          </BridgeProvider>
+        </ConnectKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   )
