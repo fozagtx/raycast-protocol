@@ -45,6 +45,13 @@ Recorded Arbitrum wiring:
 | Set SourceVault destination receiver | `0x6f27a6ff7057d4e600fb1527b156767d668804626ae2bb0f289fffe5a72c3589` |
 | Set SenderReceiver destination vault | `0x17c6f46c914be08f4e546cb885703603b9db917139ca3fa545ff093d2c3e07a6` |
 
+Current CCIP fee funding:
+
+| Contract | Network | LINK balance | Funding tx |
+| --- | --- | --- | --- |
+| `SourceVault` | Arbitrum Sepolia | `25 LINK` | `0xbade64cc460b2175c6f7d27930b5baabe8d91f0fb74cce13ee36f8e61d4a3408` |
+| `SenderReceiver` | Ethereum Sepolia | `25 LINK` | Chainlink faucet transfer confirmed on-chain |
+
 | Script | Deploys |
 | --- | --- |
 | `script/DeploySvToArbSepolia.s.sol` | Arbitrum Sepolia `SourceVault` |

@@ -70,10 +70,20 @@ const usdc = inputTokenUsdc
 const spender = sourceVaultContract
 const targetChain = arbitrumSepolia
 const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
+const gasFeeBuffer = BigInt(1_000_000)
 const formatError = (error: unknown, fallback: string) => {
   if (error instanceof BaseError) return error.shortMessage || fallback
   if (error instanceof Error) return error.message || fallback
   return fallback
+}
+type ActivePublicClient = NonNullable<ReturnType<typeof usePublicClient>>
+const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
+  const fees = await client.estimateFeesPerGas({ type: "eip1559" })
+
+  return {
+    maxFeePerGas: fees.maxFeePerGas * BigInt(2) + gasFeeBuffer,
+    maxPriorityFeePerGas: fees.maxPriorityFeePerGas + gasFeeBuffer,
+  }
 }
 
 export function BridgeProvider(props: { children: ReactNode }) {
@@ -187,6 +197,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
           "function approve(address spender, uint256 amount) external returns (bool)",
         ])
         const amount = parseUnits(inputAmount, 6)
+        const feeOverrides = await getBufferedFeeOverrides(client)
         const hash = await wallet.writeContract({
           account,
           address: usdc,
@@ -194,6 +205,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
           chain: targetChain,
           functionName: "approve",
           args: [spender, amount],
+          ...feeOverrides,
         })
         setStatusMessage(`Approval submitted: ${shortHash(hash)}`)
         await client.waitForTransactionReceipt({
@@ -251,6 +263,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
           to: sourceVaultContract,
           data: encodedData,
         })
+        const feeOverrides = await getBufferedFeeOverrides(client)
         const hash = await wallet.writeContract({
           account,
           address: sourceVaultContract,
@@ -259,6 +272,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
           functionName: "deposit",
           args: [amount, account],
           gas: gasLimit,
+          ...feeOverrides,
         })
         setStatusMessage(`Deposit submitted: ${shortHash(hash)}`)
         await client.waitForTransactionReceipt({
