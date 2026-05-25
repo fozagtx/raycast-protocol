@@ -76,7 +76,8 @@ const vaultShareToken = sourceVaultContract
 const spender = sourceVaultContract
 const targetChain = arbitrumSepolia
 const transactionExplorerUrl = targetChain.blockExplorers.default.url
-const gasFeeBuffer = BigInt(1_000_000)
+const maxFeeBuffer = BigInt(100_000_000)
+const priorityFeeBuffer = BigInt(1_000_000)
 const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
 const formatError = (error: unknown, fallback: string) => {
   if (error instanceof BaseError) return error.shortMessage || fallback
@@ -85,11 +86,19 @@ const formatError = (error: unknown, fallback: string) => {
 }
 type ActivePublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
-  const fees = await client.estimateFeesPerGas({ type: "eip1559" })
+  const [fees, pendingBlock] = await Promise.all([
+    client.estimateFeesPerGas({ type: "eip1559" }),
+    client.getBlock({ blockTag: "pending" }).catch(() => null),
+  ])
+  const pendingBaseFee = pendingBlock?.baseFeePerGas ?? BigInt(0)
+  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas + priorityFeeBuffer
+  const estimatedFeeCap = fees.maxFeePerGas * BigInt(3) + maxFeeBuffer
+  const baseFeeCap = pendingBaseFee + maxPriorityFeePerGas + maxFeeBuffer
 
   return {
-    maxFeePerGas: fees.maxFeePerGas * BigInt(2) + gasFeeBuffer,
-    maxPriorityFeePerGas: fees.maxPriorityFeePerGas + gasFeeBuffer,
+    maxFeePerGas:
+      estimatedFeeCap > baseFeeCap ? estimatedFeeCap : baseFeeCap,
+    maxPriorityFeePerGas,
   }
 }
 
