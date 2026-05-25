@@ -67,6 +67,8 @@ const targetChain = arbitrumSepolia
 const transactionExplorerUrl = targetChain.blockExplorers.default.url
 const maxFeeBuffer = BigInt(100_000_000)
 const priorityFeeBuffer = BigInt(1_000_000)
+const fallbackMaxFeePerGas = BigInt(2_000_000_000)
+const fallbackMaxPriorityFeePerGas = BigInt(10_000_000)
 const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
 const formatError = (error: unknown, fallback: string) => {
   if (error instanceof BaseError) return error.shortMessage || fallback
@@ -80,13 +82,21 @@ const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
     client.getBlock({ blockTag: "pending" }).catch(() => null),
   ])
   const pendingBaseFee = pendingBlock?.baseFeePerGas ?? BigInt(0)
-  const maxPriorityFeePerGas = fees.maxPriorityFeePerGas + priorityFeeBuffer
+  const suggestedPriorityFee = fees.maxPriorityFeePerGas + priorityFeeBuffer
+  const maxPriorityFeePerGas =
+    suggestedPriorityFee > fallbackMaxPriorityFeePerGas
+      ? suggestedPriorityFee
+      : fallbackMaxPriorityFeePerGas
   const estimatedFeeCap = fees.maxFeePerGas * BigInt(3) + maxFeeBuffer
   const baseFeeCap = pendingBaseFee + maxPriorityFeePerGas + maxFeeBuffer
+  const dynamicMaxFee =
+    estimatedFeeCap > baseFeeCap ? estimatedFeeCap : baseFeeCap
 
   return {
     maxFeePerGas:
-      estimatedFeeCap > baseFeeCap ? estimatedFeeCap : baseFeeCap,
+      dynamicMaxFee > fallbackMaxFeePerGas
+        ? dynamicMaxFee
+        : fallbackMaxFeePerGas,
     maxPriorityFeePerGas,
   }
 }
@@ -191,13 +201,11 @@ export function WithdrawProvider(props: { children: ReactNode }) {
           data: encodedData,
         })
         const feeOverrides = await getBufferedFeeOverrides(client)
-        const hash = await wallet.writeContract({
+        const hash = await wallet.sendTransaction({
           account,
-          address: sourceVaultContract,
-          abi: SOURCE_VAULT_ABI,
           chain: targetChain,
-          functionName: "redeem",
-          args: [shares, account, account],
+          to: sourceVaultContract,
+          data: encodedData,
           gas: gasLimit,
           ...feeOverrides,
         })
