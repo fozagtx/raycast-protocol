@@ -11,7 +11,6 @@ export function Deposit() {
     isApproving,
     isLoading,
     isSubmitting,
-    isWalletReady,
     statusMessage,
     errorMessage,
     quote,
@@ -48,22 +47,16 @@ export function Deposit() {
         type="button"
         className="flex h-12 w-full items-center justify-center rounded-full border border-white/10 bg-[#292C32] px-4 py-3 text-base font-semibold tracking-[-0.5px] text-[#D1D6E0] transition duration-150 ease-out hover:bg-[#343840] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#17191C] disabled:pointer-events-none disabled:opacity-70"
         onClick={onApprove}
-        disabled={!isWalletReady || isApproving || isSubmitting || isApproved}
+        disabled={isApproving || isSubmitting || isApproved}
         aria-busy={isApproving}
       >
-        {!isWalletReady
-          ? "Wallet loading..."
-          : isApproving
-            ? "Approving..."
-            : isApproved
-              ? "Approved"
-              : "Approve"}
+        {isApproving ? "Approving..." : isApproved ? "Approved" : "Approve"}
       </button>
       <button
         type="button"
         className="flex h-14 w-full items-center justify-center rounded-full border border-white/10 bg-cta-gradient px-4 py-3 text-base font-semibold tracking-[-0.5px] text-white transition duration-150 ease-out hover:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#17191C] disabled:pointer-events-none disabled:opacity-75"
         onClick={onSubmit}
-        disabled={!isWalletReady || isSubmitting || isApproving}
+        disabled={isSubmitting || isApproving}
         aria-busy={isSubmitting}
       >
         {isSubmitting && (
@@ -72,13 +65,7 @@ export function Deposit() {
           </div>
         )}
         <span>
-          {!isWalletReady
-            ? "Wallet loading..."
-            : isSubmitting
-              ? "Depositing..."
-              : isApproved
-                ? "Deposit"
-                : "Approve first"}
+          {isSubmitting ? "Depositing..." : isApproved ? "Deposit" : "Approve first"}
         </span>
       </button>
     </>

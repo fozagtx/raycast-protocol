@@ -41,7 +41,6 @@ export interface BridgeContext {
   isApproving: boolean
   isLoading: boolean
   isSubmitting: boolean
-  isWalletReady: boolean
   statusMessage: string | null
   errorMessage: string | null
   quote: FormattedQuote | null
@@ -57,7 +56,6 @@ export const BridgeProviderContext = createContext<BridgeContext>({
   isApproving: false,
   isLoading: false,
   isSubmitting: false,
-  isWalletReady: false,
   statusMessage: null,
   errorMessage: null,
   quote: null,
@@ -93,7 +91,6 @@ export function BridgeProvider(props: { children: ReactNode }) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [quote, setQuote] = useState<FormattedQuote | null>(null)
-  const isWalletReady = Boolean(address && publicClient && walletClient)
 
   const { data: allowance, refetch } = useReadContract({
     chainId: targetChain.id,
@@ -135,7 +132,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
       return false
     }
     if (!walletClient) {
-      setStatusMessage("Finishing wallet connection. The action buttons will enable automatically.")
+      setErrorMessage("Wallet signer is not available. Reconnect your wallet and try again.")
       return false
     }
     const amnt = Number(inputAmount)
@@ -349,7 +346,6 @@ export function BridgeProvider(props: { children: ReactNode }) {
         isApproving,
         isLoading: canDisplayQuote ? isLoading : false,
         isSubmitting,
-        isWalletReady,
         statusMessage,
         errorMessage,
         quote: canDisplayQuote ? quote : null,
