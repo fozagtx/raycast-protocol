@@ -41,8 +41,11 @@ export interface BridgeContext {
   isApproving: boolean
   isLoading: boolean
   isSubmitting: boolean
+  isDepositConfirmed: boolean
   statusMessage: string | null
   errorMessage: string | null
+  transactionHash: string | null
+  transactionExplorerUrl: string
   quote: FormattedQuote | null
   onApprove: () => void
   onChangeInput: (val: string) => void
@@ -56,8 +59,11 @@ export const BridgeProviderContext = createContext<BridgeContext>({
   isApproving: false,
   isLoading: false,
   isSubmitting: false,
+  isDepositConfirmed: false,
   statusMessage: null,
   errorMessage: null,
+  transactionHash: null,
+  transactionExplorerUrl: "",
   quote: null,
   onApprove: () => {},
   onChangeInput: () => {},
@@ -69,6 +75,7 @@ export const useBridge = () => useContext(BridgeProviderContext)
 const usdc = inputTokenUsdc
 const spender = sourceVaultContract
 const targetChain = arbitrumSepolia
+const transactionExplorerUrl = targetChain.blockExplorers.default.url
 const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
 const gasFeeBuffer = BigInt(1_000_000)
 const formatError = (error: unknown, fallback: string) => {
@@ -98,8 +105,10 @@ export function BridgeProvider(props: { children: ReactNode }) {
   const [isApproving, setIsApproving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDepositConfirmed, setIsDepositConfirmed] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [transactionHash, setTransactionHash] = useState<string | null>(null)
   const [quote, setQuote] = useState<FormattedQuote | null>(null)
 
   const { data: allowance, refetch } = useReadContract({
@@ -132,6 +141,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
   const validateReady = useCallback(async () => {
     setErrorMessage(null)
     setStatusMessage(null)
+    setTransactionHash(null)
 
     if (!address) {
       setErrorMessage("Connect your wallet first.")
@@ -192,6 +202,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
       }
 
       setIsApproving(true)
+      setIsDepositConfirmed(false)
       try {
         const abi = parseAbi([
           "function approve(address spender, uint256 amount) external returns (bool)",
@@ -207,6 +218,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
           args: [spender, amount],
           ...feeOverrides,
         })
+        setTransactionHash(hash)
         setStatusMessage(`Approval submitted: ${shortHash(hash)}`)
         await client.waitForTransactionReceipt({
           confirmations: 1,
@@ -217,6 +229,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
       } catch (error) {
         setErrorMessage(formatError(error, "Approval failed."))
         setStatusMessage(null)
+        setTransactionHash(null)
       } finally {
         setIsApproving(false)
       }
@@ -237,6 +250,8 @@ export function BridgeProvider(props: { children: ReactNode }) {
     setQuote(null)
     setErrorMessage(null)
     setStatusMessage(null)
+    setTransactionHash(null)
+    setIsDepositConfirmed(false)
   }
 
   const onSubmit = useCallback(() => {
@@ -252,6 +267,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
       }
       try {
         setIsSubmitting(true)
+        setIsDepositConfirmed(false)
         const amount = parseUnits(inputAmount, 6)
         const encodedData = encodeFunctionData({
           abi: SOURCE_VAULT_ABI,
@@ -274,16 +290,19 @@ export function BridgeProvider(props: { children: ReactNode }) {
           gas: gasLimit,
           ...feeOverrides,
         })
+        setTransactionHash(hash)
         setStatusMessage(`Deposit submitted: ${shortHash(hash)}`)
         await client.waitForTransactionReceipt({
           confirmations: 1,
           hash,
         })
         await refetch()
+        setIsDepositConfirmed(true)
         setStatusMessage("Deposit confirmed.")
       } catch (error) {
         setErrorMessage(formatError(error, "Deposit failed."))
         setStatusMessage(null)
+        setTransactionHash(null)
       } finally {
         setIsSubmitting(false)
       }
@@ -360,8 +379,11 @@ export function BridgeProvider(props: { children: ReactNode }) {
         isApproving,
         isLoading: canDisplayQuote ? isLoading : false,
         isSubmitting,
+        isDepositConfirmed,
         statusMessage,
         errorMessage,
+        transactionHash,
+        transactionExplorerUrl,
         quote: canDisplayQuote ? quote : null,
         onApprove,
         onChangeInput,

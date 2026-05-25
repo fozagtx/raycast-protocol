@@ -10,7 +10,10 @@ interface InputProps {
 export function Input(props: InputProps) {
   const { isLoading } = props
   return (
-    <div className="flex w-full flex-col gap-3 rounded-[24px] bg-[#292C32] p-4">
+    <div
+      className="flex w-full flex-col gap-3 rounded-[24px] bg-[#292C32] p-4"
+      data-tour="withdraw-input"
+    >
       <label
         htmlFor="withdraw-amount"
         className="text-sm font-medium tracking-[-0.5px] text-[#8A8FA8]"

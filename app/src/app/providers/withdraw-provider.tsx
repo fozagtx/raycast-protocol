@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react"
 import {
   Address,
+  BaseError,
   encodeFunctionData,
   decodeFunctionResult,
   formatUnits,
@@ -17,10 +18,13 @@ import {
 } from "viem"
 import {
   useAccount,
+  useChainId,
   usePublicClient,
   useReadContract,
+  useSwitchChain,
   useWalletClient,
 } from "wagmi"
+import { arbitrumSepolia } from "wagmi/chains"
 
 import { sourceVaultContract } from "@/app/config"
 import { SOURCE_VAULT_ABI } from "./source-vault-abi"
@@ -37,6 +41,11 @@ export interface WithdrawContext {
   isApproving: boolean
   isLoading: boolean
   isSubmitting: boolean
+  isWithdrawConfirmed: boolean
+  statusMessage: string | null
+  errorMessage: string | null
+  transactionHash: string | null
+  transactionExplorerUrl: string
   quote: FormattedQuote | null
   onApprove: () => void
   onChangeInput: (val: string) => void
@@ -50,6 +59,11 @@ export const WithdrawProviderContext = createContext<WithdrawContext>({
   isApproving: false,
   isLoading: false,
   isSubmitting: false,
+  isWithdrawConfirmed: false,
+  statusMessage: null,
+  errorMessage: null,
+  transactionHash: null,
+  transactionExplorerUrl: "",
   quote: null,
   onApprove: () => {},
   onChangeInput: () => {},
@@ -60,10 +74,30 @@ export const useWithdraw = () => useContext(WithdrawProviderContext)
 
 const vaultShareToken = sourceVaultContract
 const spender = sourceVaultContract
+const targetChain = arbitrumSepolia
+const transactionExplorerUrl = targetChain.blockExplorers.default.url
+const gasFeeBuffer = BigInt(1_000_000)
+const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
+const formatError = (error: unknown, fallback: string) => {
+  if (error instanceof BaseError) return error.shortMessage || fallback
+  if (error instanceof Error) return error.message || fallback
+  return fallback
+}
+type ActivePublicClient = NonNullable<ReturnType<typeof usePublicClient>>
+const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
+  const fees = await client.estimateFeesPerGas({ type: "eip1559" })
+
+  return {
+    maxFeePerGas: fees.maxFeePerGas * BigInt(2) + gasFeeBuffer,
+    maxPriorityFeePerGas: fees.maxPriorityFeePerGas + gasFeeBuffer,
+  }
+}
 
 export function WithdrawProvider(props: { children: ReactNode }) {
   const { address } = useAccount()
-  const publicClient = usePublicClient()
+  const chainId = useChainId()
+  const publicClient = usePublicClient({ chainId: targetChain.id })
+  const { switchChainAsync } = useSwitchChain()
   const { data: walletClient } = useWalletClient()
 
   const [inputAmount, setInputAmount] = useState("0")
@@ -71,9 +105,14 @@ export function WithdrawProvider(props: { children: ReactNode }) {
   const [isApproving, setIsApproving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isWithdrawConfirmed, setIsWithdrawConfirmed] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [transactionHash, setTransactionHash] = useState<string | null>(null)
   const [quote, setQuote] = useState<FormattedQuote | null>(null)
 
   const { data: allowance, refetch } = useReadContract({
+    chainId: targetChain.id,
     address: vaultShareToken,
     abi: parseAbi([
       "function allowance(address owner, address spender) external view returns (uint256)",
@@ -90,90 +129,181 @@ export function WithdrawProvider(props: { children: ReactNode }) {
     if (isApproving) return false
     const amnt = Number(inputAmount)
     if (amnt <= 0) return false
-    const amount = parseUnits(inputAmount, 6)
+    let amount: bigint
+    try {
+      amount = parseUnits(inputAmount, 6)
+    } catch {
+      return false
+    }
     return allowance ? allowance >= amount : false
   }, [address, allowance, inputAmount, isApproving])
 
-  const onApprove = useCallback(() => {
-    if (!publicClient || !walletClient) return
+  const validateReady = useCallback(async () => {
+    setErrorMessage(null)
+    setStatusMessage(null)
+    setTransactionHash(null)
+
+    if (!address) {
+      setErrorMessage("Connect your wallet first.")
+      return false
+    }
+    if (!publicClient) {
+      setErrorMessage("Network client is still loading. Try again in a moment.")
+      return false
+    }
+    if (!walletClient) {
+      setErrorMessage("Wallet signer is not available. Reconnect your wallet and try again.")
+      return false
+    }
     const amnt = Number(inputAmount)
-    if (amnt <= 0) return
+    if (!Number.isFinite(amnt) || amnt <= 0) {
+      setErrorMessage("Enter an amount greater than 0.")
+      return false
+    }
+    try {
+      parseUnits(inputAmount, 6)
+    } catch {
+      setErrorMessage("Use a valid rcARB amount with up to 6 decimals.")
+      return false
+    }
+    if (chainId !== targetChain.id) {
+      try {
+        setStatusMessage("Switching wallet to Arbitrum Sepolia...")
+        await switchChainAsync({ chainId: targetChain.id })
+      } catch (error) {
+        setStatusMessage(null)
+        setErrorMessage(
+          formatError(error, "Switch to Arbitrum Sepolia and try again."),
+        )
+        return false
+      }
+    }
+
+    return true
+  }, [
+    address,
+    chainId,
+    inputAmount,
+    publicClient,
+    switchChainAsync,
+    walletClient,
+  ])
+
+  const onApprove = useCallback(() => {
     const approve = async () => {
+      if (!(await validateReady())) return
+      const account = address
+      const client = publicClient
+      const wallet = walletClient
+      if (!account || !client || !wallet) return
       setIsApproving(true)
+      setIsWithdrawConfirmed(false)
       try {
         const abi = parseAbi([
           "function approve(address spender, uint256 amount) external returns (bool)",
         ])
         const amount = parseUnits(inputAmount, 6)
-        const hash = await walletClient.writeContract({
+        const feeOverrides = await getBufferedFeeOverrides(client)
+        const hash = await wallet.writeContract({
+          account,
           address: vaultShareToken,
           abi,
+          chain: targetChain,
           functionName: "approve",
           args: [spender, amount],
+          ...feeOverrides,
         })
-        await publicClient.waitForTransactionReceipt({
+        setTransactionHash(hash)
+        setStatusMessage(`Approval submitted: ${shortHash(hash)}`)
+        await client.waitForTransactionReceipt({
           confirmations: 1,
           hash,
         })
         await refetch()
+        setStatusMessage("Approval confirmed.")
       } catch (error) {
-        console.warn("Error approving withdrawal:", error)
+        setErrorMessage(formatError(error, "Approval failed."))
+        setStatusMessage(null)
+        setTransactionHash(null)
       } finally {
         setIsApproving(false)
       }
     }
     approve()
-  }, [inputAmount, publicClient, refetch, walletClient])
+  }, [address, inputAmount, publicClient, refetch, validateReady, walletClient])
 
   const onChangeInput = (val: string) => {
     setInputAmount(val)
     setQuote(null)
+    setErrorMessage(null)
+    setStatusMessage(null)
+    setTransactionHash(null)
+    setIsWithdrawConfirmed(false)
   }
 
   const onSubmit = useCallback(() => {
     const submitting = async () => {
-      if (!address || !publicClient || !walletClient) return
-      const amnt = Number(inputAmount)
-      if (amnt <= 0) return
+      if (!(await validateReady())) return
+      const account = address
+      const client = publicClient
+      const wallet = walletClient
+      if (!account || !client || !wallet) return
       try {
         setIsSubmitting(true)
+        setIsWithdrawConfirmed(false)
         const shares = parseUnits(inputAmount, 6)
         const encodedData = encodeFunctionData({
           abi: SOURCE_VAULT_ABI,
           functionName: "redeem",
-          args: [shares, address, address],
+          args: [shares, account, account],
         })
-        const gasLimit = await publicClient.estimateGas({
-          account: address,
+        const gasLimit = await client.estimateGas({
+          account,
           to: sourceVaultContract,
           data: encodedData,
         })
-        const hash = await walletClient.writeContract({
+        const feeOverrides = await getBufferedFeeOverrides(client)
+        const hash = await wallet.writeContract({
+          account,
           address: sourceVaultContract,
           abi: SOURCE_VAULT_ABI,
+          chain: targetChain,
           functionName: "redeem",
-          args: [shares, address, address],
+          args: [shares, account, account],
           gas: gasLimit,
+          ...feeOverrides,
         })
-        await publicClient.waitForTransactionReceipt({
+        setTransactionHash(hash)
+        setStatusMessage(`Withdrawal submitted: ${shortHash(hash)}`)
+        await client.waitForTransactionReceipt({
           confirmations: 1,
           hash,
         })
+        await refetch()
+        setIsWithdrawConfirmed(true)
+        setStatusMessage("Withdrawal confirmed.")
       } catch (error) {
-        console.warn("Error submitting withdraw:", error)
+        setErrorMessage(formatError(error, "Withdrawal failed."))
+        setStatusMessage(null)
+        setTransactionHash(null)
       } finally {
         setIsSubmitting(false)
       }
     }
     submitting()
-  }, [address, inputAmount, publicClient, walletClient])
+  }, [address, inputAmount, publicClient, refetch, validateReady, walletClient])
 
 
   useEffect(() => {
     if (!address || !publicClient) return
     const amnt = Number(inputAmount)
     if (amnt <= 0) return
-    const amount = parseUnits(inputAmount, 6)
+    let amount: bigint
+    try {
+      amount = parseUnits(inputAmount, 6)
+    } catch {
+      return
+    }
     let ignore = false
     const fetchQuote = async () => {
       setIsLoading(true)
@@ -224,6 +354,11 @@ export function WithdrawProvider(props: { children: ReactNode }) {
         isApproving,
         isLoading: canDisplayQuote ? isLoading : false,
         isSubmitting,
+        isWithdrawConfirmed,
+        statusMessage,
+        errorMessage,
+        transactionHash,
+        transactionExplorerUrl,
         quote: canDisplayQuote ? quote : null,
         onApprove,
         onChangeInput,

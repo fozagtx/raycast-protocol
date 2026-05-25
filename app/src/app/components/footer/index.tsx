@@ -7,7 +7,10 @@ const formatAddress = (address: string) =>
 
 export function Footer() {
   return (
-    <footer className="flex w-full items-end justify-between pb-5 pt-2">
+    <footer
+      className="flex w-full items-end justify-between pb-5 pt-2"
+      data-tour="footer-wallet"
+    >
       <div className="font-serif text-2xl tracking-[-0.5px] text-navy">
         Raycast Protocol
       </div>

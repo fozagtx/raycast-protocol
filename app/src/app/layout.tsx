@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Instrument_Sans, Instrument_Serif, Space_Mono } from "next/font/google"
+import "driver.js/dist/driver.css"
 import "./globals.css"
 
 import { Providers } from "@/app/providers"

@@ -1,8 +1,12 @@
+import { TransactionStatus } from "./transaction-status"
+
 interface SubmittingProps {
+  explorerUrl?: string
   inputLabel: string
   outputLabel: string
   routeLabel: string
   statusLabel: string
+  transactionHash?: string | null
 }
 
 export function Submitting(props: SubmittingProps) {
@@ -25,6 +29,14 @@ export function Submitting(props: SubmittingProps) {
           {props.inputLabel} to {props.outputLabel}
         </div>
       </div>
+      {props.transactionHash && (
+        <TransactionStatus
+          errorMessage={null}
+          explorerUrl={props.explorerUrl ?? ""}
+          statusMessage={props.statusLabel}
+          transactionHash={props.transactionHash}
+        />
+      )}
     </div>
   )
 }

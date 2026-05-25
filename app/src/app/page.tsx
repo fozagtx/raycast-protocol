@@ -12,7 +12,10 @@ export default function Connect() {
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-page-gradient text-navy">
       <div className="mx-auto flex min-h-screen w-full max-w-[1223px] flex-col px-4 py-5 sm:px-6 lg:px-8">
-        <header className="z-50 flex items-center justify-between pb-2">
+        <header
+          className="z-50 flex items-center justify-between pb-2"
+          data-tour="app-header"
+        >
           <div className="flex items-center gap-2">
             <span className="brand-mark" aria-hidden="true">
               R
@@ -21,7 +24,10 @@ export default function Connect() {
               Raycast Protocol
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-full bg-blue-700/10 px-4 py-2 text-sm font-semibold tracking-[-0.5px] text-navy">
+          <div
+            className="flex items-center gap-2 rounded-full bg-blue-700/10 px-4 py-2 text-sm font-semibold tracking-[-0.5px] text-navy"
+            data-tour="network-badge"
+          >
             <Image
               alt=""
               aria-hidden="true"
@@ -43,6 +49,7 @@ export default function Connect() {
               <div
                 className="hero-logo-orbit hero-route-orbit relative h-20 w-[min(520px,calc(100vw-32px))] sm:h-24"
                 aria-label="Arbitrum to USDC to Ethereum"
+                data-tour="route-graphic"
               >
                 <div className="hero-logo-card hero-logo-card-arbitrum">
                   <Image
