@@ -7,11 +7,12 @@ import {
   useState,
 } from "react"
 import type { ReactNode } from "react"
+import type { Address, Hex } from "viem"
 import {
-  Address,
   BaseError,
   encodeFunctionData,
   decodeFunctionResult,
+  formatEther,
   formatUnits,
   parseAbi,
   parseUnits,
@@ -76,12 +77,45 @@ const usdc = inputTokenUsdc
 const spender = sourceVaultContract
 const targetChain = arbitrumSepolia
 const transactionExplorerUrl = targetChain.blockExplorers.default.url
+const nativeTokenSymbol = targetChain.nativeCurrency.symbol
 const shortHash = (hash: string) => `${hash.slice(0, 6)}...${hash.slice(-4)}`
 const maxFeeBuffer = BigInt(100_000_000)
 const priorityFeeBuffer = BigInt(1_000_000)
 const fallbackMaxFeePerGas = BigInt(2_000_000_000)
 const fallbackMaxPriorityFeePerGas = BigInt(10_000_000)
+const compactDecimal = (value: string) => {
+  const [whole, fraction = ""] = value.split(".")
+  const compactFraction = fraction.slice(0, 6).replace(/0+$/, "")
+  return compactFraction ? `${whole}.${compactFraction}` : whole
+}
+const formatNativeAmount = (value: bigint) =>
+  `${compactDecimal(formatEther(value))} ${nativeTokenSymbol}`
+const insufficientFundsPattern =
+  /insufficient funds|exceeds the balance|gas \* price \+ value|gas \* gas fee \+ value|overshot/i
+const formatInsufficientFundsMessage = (message: string) => {
+  const balance = message.match(/balance (\d+)/i)?.[1]
+  const txCost = message.match(/tx cost (\d+)/i)?.[1]
+  const overshot = message.match(/overshot (\d+)/i)?.[1]
+
+  if (balance && txCost) {
+    const missing = overshot
+      ? BigInt(overshot)
+      : BigInt(txCost) - BigInt(balance)
+    return `Insufficient ${nativeTokenSymbol} for gas on ${targetChain.name}. Wallet has ${formatNativeAmount(BigInt(balance))}; this transaction can reserve up to ${formatNativeAmount(BigInt(txCost))}. Add at least ${formatNativeAmount(missing > BigInt(0) ? missing : BigInt(0))}, then try again.`
+  }
+
+  return `Insufficient ${nativeTokenSymbol} for gas on ${targetChain.name}. Add native ${nativeTokenSymbol} to the connected wallet, then try again.`
+}
 const formatError = (error: unknown, fallback: string) => {
+  const message =
+    error instanceof BaseError
+      ? `${error.shortMessage || ""}\n${error.details || ""}\n${error.message || ""}`
+      : error instanceof Error
+        ? error.message
+        : ""
+  if (insufficientFundsPattern.test(message)) {
+    return formatInsufficientFundsMessage(message)
+  }
   if (error instanceof BaseError) return error.shortMessage || fallback
   if (error instanceof Error) return error.message || fallback
   return fallback
@@ -98,7 +132,7 @@ const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
     suggestedPriorityFee > fallbackMaxPriorityFeePerGas
       ? suggestedPriorityFee
       : fallbackMaxPriorityFeePerGas
-  const estimatedFeeCap = fees.maxFeePerGas * BigInt(3) + maxFeeBuffer
+  const estimatedFeeCap = fees.maxFeePerGas + maxFeeBuffer
   const baseFeeCap = pendingBaseFee + maxPriorityFeePerGas + maxFeeBuffer
   const dynamicMaxFee =
     estimatedFeeCap > baseFeeCap ? estimatedFeeCap : baseFeeCap
@@ -112,6 +146,49 @@ const getBufferedFeeOverrides = async (client: ActivePublicClient) => {
   }
 }
 
+type PreparedTransaction = {
+  feeOverrides: Awaited<ReturnType<typeof getBufferedFeeOverrides>>
+  gasLimit: bigint
+}
+
+const prepareFundedTransaction = async ({
+  account,
+  client,
+  data,
+  to,
+  value = BigInt(0),
+}: {
+  account: Address
+  client: ActivePublicClient
+  data: Hex
+  to: Address
+  value?: bigint
+}): Promise<PreparedTransaction> => {
+  const [gasLimit, feeOverrides, balance] = await Promise.all([
+    client.estimateGas({
+      account,
+      data,
+      to,
+      value,
+    }),
+    getBufferedFeeOverrides(client),
+    client.getBalance({ address: account }),
+  ])
+  const requiredNative = gasLimit * feeOverrides.maxFeePerGas + value
+
+  if (balance < requiredNative) {
+    const missing = requiredNative - balance
+    throw new Error(
+      `Insufficient ${nativeTokenSymbol} for gas on ${targetChain.name}. Wallet has ${formatNativeAmount(balance)}; this transaction can reserve up to ${formatNativeAmount(requiredNative)}. Add at least ${formatNativeAmount(missing)}, then try again.`,
+    )
+  }
+
+  return {
+    feeOverrides,
+    gasLimit,
+  }
+}
+
 export function BridgeProvider(props: { children: ReactNode }) {
   const { address } = useAccount()
   const chainId = useChainId()
@@ -122,6 +199,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
   const [inputAmount, setInputAmount] = useState("0")
   const inputAmountUsd = useMemo(() => `$${Number(inputAmount)}`, [inputAmount])
   const [isApproving, setIsApproving] = useState(false)
+  const [approvedAmount, setApprovedAmount] = useState<bigint | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDepositConfirmed, setIsDepositConfirmed] = useState(false)
@@ -154,8 +232,11 @@ export function BridgeProvider(props: { children: ReactNode }) {
     } catch {
       return false
     }
-    return allowance ? allowance >= amount : false
-  }, [address, allowance, inputAmount, isApproving])
+    return Boolean(
+      (allowance && allowance >= amount) ||
+        (approvedAmount && approvedAmount >= amount),
+    )
+  }, [address, allowance, approvedAmount, inputAmount, isApproving])
 
   const validateReady = useCallback(async () => {
     setErrorMessage(null)
@@ -217,7 +298,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
       const wallet = walletClient
       if (!account || !client || !wallet) return
       if (isApproved) {
-        setStatusMessage("USDC is already approved for this amount.")
+        setStatusMessage("Wallet approved. You can now sign the deposit transaction.")
         return
       }
 
@@ -233,12 +314,14 @@ export function BridgeProvider(props: { children: ReactNode }) {
           functionName: "approve",
           args: [spender, amount],
         })
-        const gasLimit = await client.estimateGas({
+        setStatusMessage("Checking gas balance before approval...")
+        const { feeOverrides, gasLimit } = await prepareFundedTransaction({
           account,
-          to: usdc,
+          client,
           data: encodedData,
+          to: usdc,
         })
-        const feeOverrides = await getBufferedFeeOverrides(client)
+        setStatusMessage("Approve USDC in your wallet.")
         const hash = await wallet.sendTransaction({
           account,
           chain: targetChain,
@@ -253,8 +336,9 @@ export function BridgeProvider(props: { children: ReactNode }) {
           confirmations: 1,
           hash,
         })
+        setApprovedAmount(amount)
         await refetch()
-        setStatusMessage("Approval confirmed. You can deposit now.")
+        setStatusMessage("Wallet approved. You can now sign the deposit transaction.")
       } catch (error) {
         setErrorMessage(formatError(error, "Approval failed."))
         setStatusMessage(null)
@@ -275,6 +359,7 @@ export function BridgeProvider(props: { children: ReactNode }) {
 
   const onChangeInput = (val: string) => {
     setInputAmount(val)
+    setApprovedAmount(null)
     setQuote(null)
     setErrorMessage(null)
     setStatusMessage(null)
@@ -302,12 +387,14 @@ export function BridgeProvider(props: { children: ReactNode }) {
           functionName: "deposit",
           args: [amount, account],
         })
-        const gasLimit = await client.estimateGas({
+        setStatusMessage("Checking gas balance before deposit...")
+        const { feeOverrides, gasLimit } = await prepareFundedTransaction({
           account,
-          to: sourceVaultContract,
+          client,
           data: encodedData,
+          to: sourceVaultContract,
         })
-        const feeOverrides = await getBufferedFeeOverrides(client)
+        setStatusMessage("Sign the deposit transaction in your wallet.")
         const hash = await wallet.sendTransaction({
           account,
           chain: targetChain,
@@ -343,6 +430,9 @@ export function BridgeProvider(props: { children: ReactNode }) {
     walletClient,
   ])
 
+  useEffect(() => {
+    setApprovedAmount(null)
+  }, [address])
 
   useEffect(() => {
     if (!address || !publicClient) return
